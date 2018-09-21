@@ -31,9 +31,11 @@ def main():
     dbx = dropbox.Dropbox(args.token)
     ver = args.verbose
 
-    dir_v, dir_real_name, r_v = list_folder(dbx, folder)
-    dirlist = [os.path.relpath(dir_real_name[i], folder) for i in dir_real_name.keys()]
+    r_v = list_folder_rec(dbx, folder, True)
+    dl_list = [os.path.relpath(i, folder) for i in r_v.keys()]
+    dirlist = [os.path.relpath(os.path.split(i)[0], folder) for i in r_v.keys()]
     dirlist2 = [os.path.join(rootdir, i) for i in dirlist]
+    dirlist2 = set(dirlist2)
     #locfiles = [os.path.split(i)[-1] for i in glob.glob(os.path.join(rootdir, '*'))]
     locfiles = []
     for root, dirnames, filenames in os.walk(rootdir):
@@ -41,31 +43,34 @@ def main():
             fullname = os.path.join(root, filename)
             if os.path.isfile(fullname):
                 locfiles.append(os.path.relpath(os.path.join(root, filename), rootdir))
-    rv_files, dtwice = compfolders(r_v, locfiles, rootdir)
-    fsizes = [r_v[i].size for i in rv_files]
+    rv_files, dtwice = compfolders(r_v, locfiles, rootdir, folder)
+    fsizes = [r_v[os.path.join(folder, i)].size for i in rv_files]
     print('Downloading {0:d} files totalling {1}'.format(len(fsizes), size_arg(sum(fsizes))))
     print('Will also redownload {0:d} file(s)'.format(len(dtwice)))
     if yesno('Start file download?', False):
         makedirstructure(dirlist2)
         while rv_files:
-            rv_files = compfolders(r_v, locfiles, rootdir)[0]
-            fsizes = [r_v[i].size for i in rv_files]
+            rv_files = compfolders(r_v, locfiles, rootdir, folder)[0]
+            fsizes = [r_v[os.path.join(folder, i)].size for i in rv_files]
             try:
                 download_files(dbx, rv_files, folder, rootdir, fsizes, ver)
                 break
             except dropbox.files.DownloadError:
                 dbx = dropbox.Dropbox(args.token)
 def makedirstructure(dirlist2):
+    """
+        Create the directory structure
+    """
     for i in dirlist2:
         if not os.path.exists(i):
             os.makedirs(i)
-def compfolders(r_v, locfiles, local_path):
-    rv_files = r_v.keys()
+def compfolders(r_v, locfiles, local_path, dbpath):
+    rv_files = [os.path.relpath(i, dbpath) for i in r_v.keys()]
     interfiles = list(set(rv_files).intersection(set(locfiles)))
     dtwice = []
     for f_1 in interfiles:
         fsize = os.path.getsize(os.path.join(local_path, f_1))
-        if fsize == r_v[f_1].size:
+        if fsize == r_v[os.path.join(dbpath, f_1)].size:
             rv_files.remove(f_1)
         else:
             dtwice.append(f_1)
@@ -98,16 +103,15 @@ def time_arg(numsecs):
         nmins = int((numsecs%3600)/60)
         strout = '{:d} hours & {:d} minutes'.format(nhours, nmins)
     return strout
-
-def list_folder(dbx, path):
-    """List a folder.
-
-    Return a dict mapping unicode filenames to
-    FileMetadata|FolderMetadata entries.
+def list_folder_rec(dbx, path, orig = False):
+    """
+        List a folders files and sub files recursively and put every thing is a dictionary.
+        Keys:Name of file on dropbox including the original directory.
+        Values: Dropbox file metadata object associated with that file
     """
     try:
-        with stopwatch('list_folder'):
-            res = dbx.files_list_folder(path, recursive=True)
+        with stopwatch('list_folder_rec', orig):
+            res = dbx.files_list_folder(path, recursive=False)
             if not res.has_more:
                 r_list = [res]
             else:
@@ -115,39 +119,24 @@ def list_folder(dbx, path):
             while res.has_more:
                 res = dbx.files_list_folder_continue(res.cursor)
                 r_list.append(res)
-
+            r_v = {}
+            for res in r_list:
+                for entry in res.entries:
+                    if isinstance(entry, dropbox.files.FolderMetadata):
+                        if path == '':
+                            newpath = os.path.join('/', entry.name)
+                        else:
+                            newpath = os.path.join(path, entry.name)
+                        outdict = list_folder_rec(dbx, newpath)
+                        r_v.update(outdict)
+                    if isinstance(entry, dropbox.files.FileMetadata):
+                        p_1 = os.path.join(path, entry.name)
+                        r_v[p_1] = entry
+        return r_v
     except dropbox.exceptions.ApiError as err:
         print('Folder listing failed for', path, '-- assumed empty:', err)
         return {}
-    else:
-        dir_v = {}
-        r_v = {}
-        dir_names = [path]
-        dir_real_name = {path.lower():path}
-        for res in r_list:
-            for entry in res.entries:
-                if type(entry) is dropbox.files.FolderMetadata:
-                    p1 = os.path.split(entry.path_display)[0]
-                    if not p1 in dir_names and p1.lower() in dir_real_name.keys():
-                        rname = os.path.join(dir_real_name[p1.lower()], entry.name)
-                        dir_real_name[entry.path_lower] = rname
-                        dir_names.append(rname)
-                    else:
-                        dir_names.append(entry.path_display)
-                        dir_real_name[entry.path_lower] = entry.path_display
-                    dir_v[entry.path_lower] = entry
 
-        for res in r_list:
-            for entry in res.entries:
-                if type(entry) is dropbox.files.FileMetadata:
-                    p_1 = os.path.split(entry.path_lower)[0]
-                    rel_path = os.path.relpath(dir_real_name[p_1], path)
-                    if rel_path == '.':
-                        rel_path = ''
-                    p_name = os.path.join(rel_path, entry.name)
-                    r_v[p_name] = entry
-        del dir_real_name[path.lower()]
-        return dir_v, dir_real_name, r_v
 
 def download_files(dbx, rv_files, path, local_path, fsizes, ver=False):
     """
@@ -234,14 +223,16 @@ def yesno(message, default):
             pdb.set_trace()
         print('Please answer YES or NO.')
 @contextlib.contextmanager
-def stopwatch(message):
+def stopwatch(message, orig=False):
     """Context manager to print how long a block of code took."""
     t0 = time.time()
+
     try:
         yield
     finally:
         t1 = time.time()
-        print('Total elapsed time for %s: %.3f' % (message, t1 - t0))
+        if orig:
+            print('Total elapsed time for %s: %.3f' % (message, t1 - t0))
 
 if __name__ == '__main__':
     main()
