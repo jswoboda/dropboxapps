@@ -32,8 +32,10 @@ def main():
     ver = args.verbose
 
     r_v = list_folder_rec(dbx, folder, True)
-    dl_list = [os.path.relpath(i, folder) for i in r_v.keys()]
-    dirlist = [os.path.relpath(os.path.split(i)[0], folder) for i in r_v.keys()]
+    if folder == '':
+        dirlist = [os.path.relpath(os.path.split(i)[0], '/') for i in r_v.keys()]
+    else:
+        dirlist = [os.path.relpath(os.path.split(i)[0], folder) for i in r_v.keys()]
     dirlist2 = [os.path.join(rootdir, i) for i in dirlist]
     dirlist2 = set(dirlist2)
     #locfiles = [os.path.split(i)[-1] for i in glob.glob(os.path.join(rootdir, '*'))]
@@ -153,6 +155,8 @@ def download_files(dbx, rv_files, path, local_path, fsizes, ver=False):
     time_sum = 0
 
     st1 = 'Downloading file {0} of {1}, {2} remain. Name:{3}'
+    if path == '':
+        path = '/'
     for i_file, cur_file in enumerate(rv_files):
         dfile = os.path.join(path, cur_file)
         lfile = os.path.join(local_path, cur_file)
