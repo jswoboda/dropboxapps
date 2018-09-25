@@ -14,8 +14,8 @@ import glob
 import pdb
 import dropbox
 import fnmatch
-def main():
-    args = parse_command_line()
+def main(inputstr=None):
+    args = parse_command_line(inputstr)
 
     folder = args.folder
     rootdir = os.path.expanduser(args.rootdir)
@@ -49,7 +49,7 @@ def main():
     fsizes = [r_v[os.path.join(folder, i)].size for i in rv_files]
     print('Downloading {0:d} files totalling {1}'.format(len(fsizes), size_arg(sum(fsizes))))
     print('Will also redownload {0:d} file(s)'.format(len(dtwice)))
-    if yesno('Start file download?', False):
+    if not (inputstr is None) or yesno('Start file download?', False):
         makedirstructure(dirlist2)
         while rv_files:
             rv_files = compfolders(r_v, locfiles, rootdir, folder)[0]
@@ -189,6 +189,8 @@ def parse_command_line(str_input=None):
     if str_input is None:
         return parser.parse_args()
     else:
+        if isinstance(str_input, str):
+            str_input = str_input.split()
         return parser.parse_args(str_input)
 
 def yesno(message, default):
