@@ -154,7 +154,7 @@ def download_files(dbx, rv_files, path, local_path, fsizes, ver=False):
 
     time_sum = 0
 
-    st1 = 'Downloading file {0} of {1}, {2} remain. Name:{3}'
+    st1 = u'Downloading file {0} of {1}, {2} remain. Name:{3}'
     if path == '':
         path = '/'
     for i_file, cur_file in enumerate(rv_files):
