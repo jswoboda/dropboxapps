@@ -14,6 +14,8 @@ import glob
 import pdb
 import dropbox
 import fnmatch
+from requests import ConnectionError
+
 def main(inputstr=None):
     args = parse_command_line(inputstr)
 
@@ -58,6 +60,8 @@ def main(inputstr=None):
                 download_files(dbx, rv_files, folder, rootdir, fsizes, ver)
                 break
             except dropbox.files.DownloadError:
+                dbx = dropbox.Dropbox(args.token)
+            except ConnectionError:
                 dbx = dropbox.Dropbox(args.token)
 def makedirstructure(dirlist2):
     """
